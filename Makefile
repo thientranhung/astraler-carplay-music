@@ -1,39 +1,48 @@
 APP     = astra-carplay-music
-PYTHON  = venv/bin/python
-PIP     = venv/bin/pip
+VERSION = 1.0.0
 
-.PHONY: help setup build clean run
+.PHONY: help build sign release clean run
 
 help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Targets:"
-	@echo "  setup   Tạo venv và cài dependencies"
-	@echo "  build   Build binary release vào dist/"
-	@echo "  run     Chạy trực tiếp bằng Python"
-	@echo "  clean   Xóa build artifacts (dist/, build/, *.spec)"
-
-setup:
-	python3 -m venv venv
-	$(PIP) install -q -r requirements-dev.txt
-	@echo "✓ Setup xong. Chạy: make run"
+	@echo "  build    Build binary vào dist/"
+	@echo "  sign     Code sign binary (cần Developer ID)"
+	@echo "  release  Build + sign + notarize + tạo tarball"
+	@echo "  run      Chạy trực tiếp"
+	@echo "  clean    Xóa build artifacts"
 
 build:
-	$(PYTHON) -m PyInstaller \
-		--onefile \
-		--name $(APP) \
-		--distpath dist \
-		--workpath build \
-		--clean \
-		--noconfirm \
-		mix.py
+	@mkdir -p dist
+	go build -ldflags="-s -w" -o dist/$(APP) .
+	@echo "✓ dist/$(APP)"
+
+sign: build
+	codesign --sign "Developer ID Application: Cuong Nguyen (LSJVHTU65U)" \
+		--options runtime \
+		--timestamp \
+		--force \
+		dist/$(APP)
+	@echo "✓ Signed"
+
+release: sign
+	@# Notarize
+	rm -f dist/$(APP).zip
+	ditto -c -k --sequesterRsrc dist/$(APP) dist/$(APP).zip
+	xcrun notarytool submit dist/$(APP).zip \
+		--keychain-profile "$(APP)" \
+		--wait
+	@# Package cho Homebrew
+	rm -f dist/$(APP)-v$(VERSION)-macos.tar.gz
+	tar -czf dist/$(APP)-v$(VERSION)-macos.tar.gz -C dist $(APP)
 	@echo ""
-	@echo "✓ Binary: dist/$(APP)"
-	@echo "  Chạy thử: ./dist/$(APP) --help"
+	@shasum -a 256 dist/$(APP)-v$(VERSION)-macos.tar.gz
+	@echo "✓ dist/$(APP)-v$(VERSION)-macos.tar.gz"
 
 run:
-	$(PYTHON) mix.py $(ARGS)
+	go run . $(ARGS)
 
 clean:
-	rm -rf dist build __pycache__ *.spec
+	rm -rf dist/
 	@echo "✓ Cleaned"
