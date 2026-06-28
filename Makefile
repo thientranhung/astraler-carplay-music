@@ -1,4 +1,4 @@
-APP     = astra-mix-sound
+APP     = astra-carplay-music
 PYTHON  = venv/bin/python
 PIP     = venv/bin/pip
 

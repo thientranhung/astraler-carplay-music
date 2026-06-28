@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-astra-mix-sound — Ghép tất cả file TTS × BG music, xuất ra _output/.
+astra-carplay-music — Ghép tất cả file TTS × BG music, xuất ra _output/.
 
 Tự động quét assets/tts/ và assets/bg-music/, tạo N×M file output.
 
@@ -56,7 +56,7 @@ def mix(tts_path: str, bg_path: str, output_path: str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="astra-mix-sound",
+        prog="astra-carplay-music",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
