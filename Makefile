@@ -1,5 +1,5 @@
 APP     = astra-carplay-music
-VERSION = 1.0.0
+VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 .PHONY: help build sign release clean run
 
@@ -15,7 +15,7 @@ help:
 
 build:
 	@mkdir -p dist
-	go build -ldflags="-s -w" -o dist/$(APP) .
+	go build -ldflags="-s -w -X main.version=$(VERSION)" -o dist/$(APP) .
 	@echo "✓ dist/$(APP)"
 
 sign: build

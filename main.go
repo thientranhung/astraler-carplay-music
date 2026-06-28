@@ -9,8 +9,9 @@ import (
 	"strings"
 )
 
+var version = "dev"
+
 const (
-	version   = "1.0.0"
 	ttsDir    = "assets/tts"
 	bgmDir    = "assets/bg-music"
 	outputDir = "_output"
