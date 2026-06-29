@@ -40,23 +40,15 @@ func findAudio(dir string) ([]string, error) {
 	return files, nil
 }
 
-var effectFilters = map[string]string{
-	// Tiếng vang ngắn, nhẹ — phòng nhỏ
-	"echo": "aecho=0.8:0.9:40|60:0.4|0.3",
-	// Nhiều lớp echo delay dài — giả lập reverb phòng lớn
-	"reverb": "aecho=0.8:0.85:60|80|100:0.35|0.25|0.15",
-	// Chorus + echo dày — chuẩn sân khấu / music hall
-	"hall": "chorus=0.5:0.9:50:0.4:0.25:2,aecho=0.8:0.88:60|90|120:0.35|0.25|0.15",
-}
-
-func mix(ttsPath, bgPath, outPath string, bgmVolume, ttsVolume float64, delayMs int, duration float64, effect string) error {
-	ttsChain := fmt.Sprintf("volume=%.1fdB,adelay=%d|%d", ttsVolume, delayMs, delayMs)
-	if f, ok := effectFilters[effect]; ok {
-		ttsChain += "," + f
+func mix(ttsPath, bgPath, outPath string, bgmVolume, ttsVolume float64, delayMs int, duration, fadeOut float64) error {
+	mixChain := "amix=inputs=2:duration=first:dropout_transition=0"
+	if fadeOut > 0 && duration > 0 {
+		fadeStart := duration - fadeOut
+		mixChain += fmt.Sprintf(",afade=t=out:st=%.3f:d=%.3f", fadeStart, fadeOut)
 	}
 	filter := fmt.Sprintf(
-		"[0]volume=%.1fdB[bg];[1]%s[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=0[out]",
-		bgmVolume, ttsChain,
+		"[0]volume=%.1fdB[bg];[1]volume=%.1fdB,adelay=%d|%d[tts];[bg][tts]%s[out]",
+		bgmVolume, ttsVolume, delayMs, delayMs, mixChain,
 	)
 	args := []string{"-y", "-i", bgPath, "-i", ttsPath, "-filter_complex", filter, "-map", "[out]", "-b:a", "320k"}
 	if duration > 0 {
@@ -103,7 +95,7 @@ func doctor() {
 	}
 }
 
-func run(bgmVolume, ttsVolume float64, delayMs int, duration float64, effect string) error {
+func run(bgmVolume, ttsVolume float64, delayMs int, duration, fadeOut float64) error {
 	for _, dir := range []string{ttsDir, bgmDir} {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			return fmt.Errorf("không tìm thấy thư mục '%s'. Hãy chạy từ thư mục gốc của project", dir)
@@ -135,19 +127,19 @@ func run(bgmVolume, ttsVolume float64, delayMs int, duration float64, effect str
 	if duration > 0 {
 		durStr = fmt.Sprintf("%.1fs", duration)
 	}
-	effectStr := "none"
-	if effect != "" {
-		effectStr = effect
+	fadeStr := "none"
+	if fadeOut > 0 {
+		fadeStr = fmt.Sprintf("%.1fs", fadeOut)
 	}
-	fmt.Fprintf(os.Stderr, "%d TTS × %d BG = %d file  [bgm %+.0fdB | tts %+.0fdB | delay %.1fs | duration %s | effect %s]\n\n",
-		len(ttsFiles), len(bgFiles), total, bgmVolume, ttsVolume, float64(delayMs)/1000, durStr, effectStr)
+	fmt.Fprintf(os.Stderr, "%d TTS × %d BG = %d file  [bgm %+.0fdB | tts %+.0fdB | delay %.1fs | duration %s | fadeout %s]\n\n",
+		len(ttsFiles), len(bgFiles), total, bgmVolume, ttsVolume, float64(delayMs)/1000, durStr, fadeStr)
 
 	for _, bg := range bgFiles {
 		bgName := strings.TrimSuffix(filepath.Base(bg), filepath.Ext(bg))
 		for _, tts := range ttsFiles {
 			ttsName := strings.TrimSuffix(filepath.Base(tts), filepath.Ext(tts))
 			out := filepath.Join(outputDir, ttsName+"_"+bgName+".mp3")
-			if err := mix(tts, bg, out, bgmVolume, ttsVolume, delayMs, duration, effect); err != nil {
+			if err := mix(tts, bg, out, bgmVolume, ttsVolume, delayMs, duration, fadeOut); err != nil {
 				return fmt.Errorf("%s: %w", out, err)
 			}
 			fmt.Printf("  ✓ %s\n", filepath.Base(out))
@@ -162,8 +154,8 @@ func main() {
 	bgmVolume := flag.Float64("bgm-volume", -3, "Điều chỉnh âm lượng nhạc nền, đơn vị dB (mặc định: -3)")
 	ttsVolume := flag.Float64("tts-volume", 0, "Điều chỉnh âm lượng giọng TTS, đơn vị dB (mặc định: 0)")
 	delay := flag.Float64("delay", 0.5, "Số giây nhạc nền chạy trước khi TTS bắt đầu (mặc định: 0.5)")
-	duration    := flag.Float64("duration", 0, "Độ dài file output tính bằng giây, dựa trên BG music (mặc định: full)")
-	effect      := flag.String("effect", "", "Hiệu ứng âm thanh cho TTS: echo | reverb | hall (mặc định: none)")
+	duration := flag.Float64("duration", 0, "Độ dài file output tính bằng giây (mặc định: full)")
+	fadeOut  := flag.Float64("fade-out", 0, "Fade out cuối bài, tính bằng giây (mặc định: không có)")
 	showVersion := flag.Bool("version", false, "Hiển thị version")
 	showDoctor  := flag.Bool("doctor", false, "Kiểm tra dependencies cần thiết")
 
@@ -197,12 +189,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if _, ok := effectFilters[*effect]; *effect != "" && !ok {
-		fmt.Fprintf(os.Stderr, "Error: --effect không hợp lệ '%s'. Chọn: echo, reverb, hall\n", *effect)
-		os.Exit(1)
-	}
-
-	if err := run(*bgmVolume, *ttsVolume, int(*delay*1000), *duration, *effect); err != nil {
+	if err := run(*bgmVolume, *ttsVolume, int(*delay*1000), *duration, *fadeOut); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
