@@ -129,7 +129,7 @@ func run(bgmVolume, ttsVolume float64, delayMs int, duration float64) error {
 		bgName := strings.TrimSuffix(filepath.Base(bg), filepath.Ext(bg))
 		for _, tts := range ttsFiles {
 			ttsName := strings.TrimSuffix(filepath.Base(tts), filepath.Ext(tts))
-			out := filepath.Join(outputDir, ttsName+"+"+bgName+".mp3")
+			out := filepath.Join(outputDir, ttsName+"_"+bgName+".mp3")
 			if err := mix(tts, bg, out, bgmVolume, ttsVolume, delayMs, duration); err != nil {
 				return fmt.Errorf("%s: %w", out, err)
 			}
