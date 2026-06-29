@@ -60,6 +60,39 @@ func mix(ttsPath, bgPath, outPath string, bgmVolume, ttsVolume float64, delayMs 
 	return nil
 }
 
+func doctor() {
+	type check struct {
+		name    string
+		command string
+		args    []string
+		install string
+	}
+	checks := []check{
+		{"ffmpeg", "ffmpeg", []string{"-version"}, "brew install ffmpeg"},
+	}
+
+	ok := true
+	for _, c := range checks {
+		out, err := exec.Command(c.command, c.args...).Output()
+		if err != nil {
+			fmt.Printf("  ✗ %-10s não tìm thấy  →  %s\n", c.name, c.install)
+			ok = false
+			continue
+		}
+		// Lấy dòng đầu tiên của output làm version string
+		firstLine := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)[0]
+		fmt.Printf("  ✓ %-10s %s\n", c.name, firstLine)
+	}
+
+	fmt.Println()
+	if ok {
+		fmt.Println("Tất cả dependencies OK. Tool sẵn sàng sử dụng.")
+	} else {
+		fmt.Fprintln(os.Stderr, "Còn thiếu dependencies. Cài đặt theo hướng dẫn ở trên rồi chạy lại.")
+		os.Exit(1)
+	}
+}
+
 func run(bgmVolume, ttsVolume float64, delayMs int) error {
 	for _, dir := range []string{ttsDir, bgmDir} {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -112,6 +145,7 @@ func main() {
 	ttsVolume := flag.Float64("tts-volume", 0, "Điều chỉnh âm lượng giọng TTS, đơn vị dB (mặc định: 0)")
 	delay := flag.Float64("delay", 0.5, "Số giây nhạc nền chạy trước khi TTS bắt đầu (mặc định: 0.5)")
 	showVersion := flag.Bool("version", false, "Hiển thị version")
+	showDoctor := flag.Bool("doctor", false, "Kiểm tra dependencies cần thiết")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "astra-carplay-music %s\n\n", version)
@@ -127,12 +161,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  Output     : %s/\n\n", outputDir)
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nChạy --doctor để kiểm tra dependencies.\n")
 	}
 
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("astra-carplay-music %s\n", version)
+		os.Exit(0)
+	}
+
+	if *showDoctor {
+		fmt.Printf("astra-carplay-music %s — doctor\n\n", version)
+		doctor()
 		os.Exit(0)
 	}
 
