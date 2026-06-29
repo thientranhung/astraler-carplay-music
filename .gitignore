@@ -1,4 +1,9 @@
 _output/
 dist/
+build/
+assets/
 .DS_Store
 venv/
+.env
+astraler-carplay-music
+*.spec
