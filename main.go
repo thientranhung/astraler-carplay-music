@@ -40,21 +40,18 @@ func findAudio(dir string) ([]string, error) {
 	return files, nil
 }
 
-func mix(ttsPath, bgPath, outPath string, bgmVolume, ttsVolume float64, delayMs int) error {
+func mix(ttsPath, bgPath, outPath string, bgmVolume, ttsVolume float64, delayMs int, duration float64) error {
 	filter := fmt.Sprintf(
 		"[0]volume=%.1fdB[bg];[1]volume=%.1fdB,adelay=%d|%d[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=0[out]",
 		bgmVolume, ttsVolume, delayMs, delayMs,
 	)
-	cmd := exec.Command("ffmpeg",
-		"-y",
-		"-i", bgPath,
-		"-i", ttsPath,
-		"-filter_complex", filter,
-		"-map", "[out]",
-		"-b:a", "320k",
-		outPath,
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	args := []string{"-y", "-i", bgPath, "-i", ttsPath, "-filter_complex", filter, "-map", "[out]", "-b:a", "320k"}
+	if duration > 0 {
+		args = append(args, "-t", fmt.Sprintf("%.3f", duration))
+	}
+	args = append(args, outPath)
+
+	if out, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg lỗi: %s", string(out))
 	}
 	return nil
@@ -93,7 +90,7 @@ func doctor() {
 	}
 }
 
-func run(bgmVolume, ttsVolume float64, delayMs int) error {
+func run(bgmVolume, ttsVolume float64, delayMs int, duration float64) error {
 	for _, dir := range []string{ttsDir, bgmDir} {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			return fmt.Errorf("không tìm thấy thư mục '%s'. Hãy chạy từ thư mục gốc của project", dir)
@@ -121,15 +118,19 @@ func run(bgmVolume, ttsVolume float64, delayMs int) error {
 	}
 
 	total := len(ttsFiles) * len(bgFiles)
-	fmt.Fprintf(os.Stderr, "%d TTS × %d BG = %d file  [bgm %+.0fdB | tts %+.0fdB | delay %.1fs]\n\n",
-		len(ttsFiles), len(bgFiles), total, bgmVolume, ttsVolume, float64(delayMs)/1000)
+	durStr := "full"
+	if duration > 0 {
+		durStr = fmt.Sprintf("%.1fs", duration)
+	}
+	fmt.Fprintf(os.Stderr, "%d TTS × %d BG = %d file  [bgm %+.0fdB | tts %+.0fdB | delay %.1fs | duration %s]\n\n",
+		len(ttsFiles), len(bgFiles), total, bgmVolume, ttsVolume, float64(delayMs)/1000, durStr)
 
 	for _, bg := range bgFiles {
 		bgName := strings.TrimSuffix(filepath.Base(bg), filepath.Ext(bg))
 		for _, tts := range ttsFiles {
 			ttsName := strings.TrimSuffix(filepath.Base(tts), filepath.Ext(tts))
 			out := filepath.Join(outputDir, ttsName+"+"+bgName+".mp3")
-			if err := mix(tts, bg, out, bgmVolume, ttsVolume, delayMs); err != nil {
+			if err := mix(tts, bg, out, bgmVolume, ttsVolume, delayMs, duration); err != nil {
 				return fmt.Errorf("%s: %w", out, err)
 			}
 			fmt.Printf("  ✓ %s\n", filepath.Base(out))
@@ -144,8 +145,9 @@ func main() {
 	bgmVolume := flag.Float64("bgm-volume", -3, "Điều chỉnh âm lượng nhạc nền, đơn vị dB (mặc định: -3)")
 	ttsVolume := flag.Float64("tts-volume", 0, "Điều chỉnh âm lượng giọng TTS, đơn vị dB (mặc định: 0)")
 	delay := flag.Float64("delay", 0.5, "Số giây nhạc nền chạy trước khi TTS bắt đầu (mặc định: 0.5)")
+	duration    := flag.Float64("duration", 0, "Độ dài file output tính bằng giây, dựa trên BG music (mặc định: full)")
 	showVersion := flag.Bool("version", false, "Hiển thị version")
-	showDoctor := flag.Bool("doctor", false, "Kiểm tra dependencies cần thiết")
+	showDoctor  := flag.Bool("doctor", false, "Kiểm tra dependencies cần thiết")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "astra-carplay-music %s\n\n", version)
@@ -177,7 +179,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if err := run(*bgmVolume, *ttsVolume, int(*delay*1000)); err != nil {
+	if err := run(*bgmVolume, *ttsVolume, int(*delay*1000), *duration); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
